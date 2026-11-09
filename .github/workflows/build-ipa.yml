@@ -1,0 +1,49 @@
+name: Build RetroDeck unsigned IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Xcode version
+        run: xcodebuild -version
+      - name: Install XcodeGen
+        run: command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build for iPhone without signing
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild -project RetroDeck.xcodeproj -scheme RetroDeck -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY='' build 2>&1 | tee build/xcodebuild.log
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          mkdir -p build/package/Payload
+          ditto build/DerivedData/Build/Products/Release-iphoneos/RetroDeck.app build/package/Payload/RetroDeck.app
+          cd build/package
+          /usr/bin/zip -qry ../RetroDeck.ipa Payload
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroDeck-unsigned-IPA
+          path: build/RetroDeck.ipa
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetroDeck-build-log
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
+          retention-days: 14
